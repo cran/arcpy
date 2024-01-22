@@ -1,0 +1,147 @@
+---
+title: "Using the helper functions"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Helper Functions}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+---
+
+The `arcpy` package provides a small number of helper functions to make
+working with spatial layer geometries and attributes easier. These 
+helper functions are essentially wrappers for the arpcy Data Access module
+that support simple transfer of information between spatial layers and R
+data frames.
+
+To demonstrate the helper functions, we'll set up a workspace with a copy
+of the California County Boundaries shapefile (available on https://data.ca.gov).
+A copy of this file is included with the `arcpy` package.
+
+
+
+```r
+library(arcpy)
+```
+
+
+```r
+# set workspace
+arcpy$env$workspace = tempdir()
+arcpy$env$scratchWorkspace = tempdir()
+
+# copy feature for example
+fc = arcpy$management$CopyFeatures(system.file("CA_Counties",
+  "CA_Counties_TIGER2016.shp", package = "arcpy"), "CA_Counties")
+```
+
+
+Reading attribute tables is accomplished using the function `da_read`.
+
+
+```r
+head(da_read(fc, fields = c("FID", "NAME")))
+```
+
+```
+##   FID          NAME
+## 1   0        Sierra
+## 2   1    Sacramento
+## 3   2 Santa Barbara
+## 4   3     Calaveras
+## 5   4       Ventura
+## 6   5   Los Angeles
+```
+
+Tokens are also supported by `arcpy`. If you have the `tibble` package installed, 
+you can read geometry tokens as list columns.
+
+
+```r
+da_read(fc, fields = c("OID@", "NAME", "SHAPE@TRUECENTROID"))
+```
+
+```
+## Loading required namespace: tibble
+```
+
+```
+## # A tibble: 58 × 3
+##    `OID@` NAME          `SHAPE@TRUECENTROID`
+##     <int> <chr>         <list>              
+##  1      0 Sierra        <list [2]>          
+##  2      1 Sacramento    <list [2]>          
+##  3      2 Santa Barbara <list [2]>          
+##  4      3 Calaveras     <list [2]>          
+##  5      4 Ventura       <list [2]>          
+##  6      5 Los Angeles   <list [2]>          
+##  7      6 Sonoma        <list [2]>          
+##  8      7 Kings         <list [2]>          
+##  9      8 San Diego     <list [2]>          
+## 10      9 Placer        <list [2]>          
+## # ℹ 48 more rows
+```
+
+You can use `da_update` to modify attributes.
+
+
+```r
+d = da_read(fc, fields = "NAME")
+d["NAME"] = paste(d$NAME, "County, CA")
+da_update(fc, d)
+
+head(da_read(fc, fields = "NAME"))
+```
+
+```
+##                       NAME
+## 1        Sierra County, CA
+## 2    Sacramento County, CA
+## 3 Santa Barbara County, CA
+## 4     Calaveras County, CA
+## 5       Ventura County, CA
+## 6   Los Angeles County, CA
+```
+
+You can also use `da_update` to add additional fields to a table, provided 
+you create the field first.
+
+
+```r
+d = da_read(fc, c("ALAND", "AWATER"))
+d["FRACLAND"] = d$ALAND / (d$ALAND + d$AWATER)
+
+arcpy$management$AddField(fc, "FRACLAND", "FLOAT")
+da_update(fc, d["FRACLAND"])
+```
+
+You can use `da_drop` and `da_insert` to remove and add rows, respectively.
+
+
+```r
+d = da_read(fc)
+# extract second row
+new.d = d[2,]
+# drop second row
+da_drop(fc, 2)
+# add the row back
+da_insert(fc, new.d)
+
+head(da_read(fc))
+```
+
+```
+## # A tibble: 6 × 20
+##     FID Shape      STATEFP COUNTYFP COUNTYNS GEOID NAME   NAMELSAD LSAD  CLASSFP
+##   <int> <list>     <chr>   <chr>    <chr>    <chr> <chr>  <chr>    <chr> <chr>  
+## 1     0 <list [2]> 06      091      00277310 06091 Sierr… Sierra … 06    H1     
+## 2     1 <list [2]> 06      083      00277306 06083 Santa… Santa B… 06    H1     
+## 3     2 <list [2]> 06      009      01675885 06009 Calav… Calaver… 06    H1     
+## 4     3 <list [2]> 06      111      00277320 06111 Ventu… Ventura… 06    H1     
+## 5     4 <list [2]> 06      037      00277283 06037 Los A… Los Ang… 06    H1     
+## 6     5 <list [2]> 06      097      01657246 06097 Sonom… Sonoma … 06    H1     
+## # ℹ 10 more variables: MTFCC <chr>, CSAFP <chr>, CBSAFP <chr>, METDIVFP <chr>,
+## #   FUNCSTAT <chr>, ALAND <dbl>, AWATER <dbl>, INTPTLAT <chr>, INTPTLON <chr>,
+## #   FRACLAND <dbl>
+```
+
+
